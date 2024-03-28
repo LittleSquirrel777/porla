@@ -236,6 +236,7 @@ void Client::initialize(int num_blocks)
             compute_commitment(data_block, commitment);
             compute_MAC_complement(0, i, complements_U[i]);
 #ifndef ENABLE_KZG
+            //这里是完整的标签
             secp256k1_gej_add_var(&commitment, &commitment, &complements_U[i], NULL);
             memcpy((void*)data_ptr, &commitment, COMMITMENT_MAC_SIZE);
 #else 
@@ -497,7 +498,8 @@ void Client::update(int block_id)
         complements_H             = new MAC_Layer[height];
         complements_H[height-1].X = new MAC_Block[1<<(height-1)];
         complements_H[height-1].Y = new MAC_Block[1<<(height-1)];
-
+        //一开始的complements_U的write_step为0，感觉这里的wtite_step应该不用加，循环结束后才加上num_blocks
+        //或者是为了体现更新num_blocks数据库后重新构建C，所以每个快的write_step不一样
         for(int i = 0; i < num_blocks; ++i) {
             compute_MAC_complement(0, i, complements_U[i]);
             write_step++;
@@ -513,6 +515,12 @@ void Client::update(int block_id)
 
         // Update H
         updated_level = 0;
+        //正确的，因为上面update_step先加一了，所以当前位为1，之前下面位都是1当前为等于0
+        //所以需要把下面的几层重新构建出来，更新得到当前层，因为服务端每一层的标签状态都是当前
+        //没有经过蝴蝶网络（实际是因为客户端发送了mac_hide把它覆盖了），所以这里客户端构建的H直接st生成
+        
+        //??这里可能是为了节省内存，只在需要的时候创建H然后从下往上构建，再把它清空
+        //这里update_level应该表示待更新的行，这以下都被更新过了，这样下面的也进行过了蝴蝶网络
         while(((write_step>>updated_level) & 0x1) == 0)
             updated_level++;
 
@@ -642,7 +650,10 @@ void Client::audit()
     // Preprocessing phase
     auto start = clock_start();
     complements_H = new MAC_Layer[height];
-
+    //服务端的H最高层就是C，其中的状态就是（level，index，write_step），
+    //每次更新时,服务端H从下往上进行了蝴蝶网络，客户端也要进行状态的蝴蝶网络，在加上隐藏的mac，发送给服务端
+    //这样就能保证H的每一层的hr就是普通的，没有经过蝴蝶网络的
+    //审计时客户端对complements_h有数据的行进行重建，只要普通的st就行
     long saved_write_step = write_step;
     for(int i = 0; i < height; ++i)
     {
@@ -705,7 +716,9 @@ void Client::audit()
 
                 for(int j = 0; j < NUM_CHECK_AUDIT; ++j)
                 {   
+                    //Cij
                     int index = abs(indices[j]) % (l<<1);
+                    //ρij
                     int coeff = abs(coeffs[j]);
 #ifndef ENABLE_KZG
                     secp256k1_scalar_set_int(&sc[n_points], coeff);
@@ -796,7 +809,7 @@ void Client::audit()
             ecmult_multi_data data; 
             data.sc = &sc[start_pos];
             data.pt = &pt[start_pos];
-
+            //ρ*
             secp256k1_ecmult_multi_var(&ctx->error_callback, scratch[t], &complements[t], &szero, ecmult_multi_callback, &data, n_point_each_thread);
         }));
         start_pos += n_point_each_thread;
