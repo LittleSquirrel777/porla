@@ -14,7 +14,7 @@
 #include <zmq.hpp>
 #include "Utils/utils.h"
 #include "config.hpp"
-
+#include <chrono>
 using namespace      std;
 
 int                  *audit_values;
@@ -71,6 +71,10 @@ public:
 
     // w is omega, the 2n-th primitive root of unity
     NTL::ZZ_p           w;
+
+    //file_prefix
+    string file_prefix_path;
+    string server_output_path;
     
     Server();
     ~Server();
@@ -157,6 +161,8 @@ Server::~Server()
 
 void Server::initialize()
 {
+    this->server_output_path = "/data/ls/porla/data1G/data_server_output";
+    this->file_prefix_path = "/data/ls/porla/data1G/";
     // Init NTL:ZZ_p
     NTL::ZZ_p::init(PRIME_MODULUS);
 #ifndef ENABLE_KZG
@@ -257,7 +263,7 @@ void Server::initialize()
         while((k < num_blocks_received))
         {
             cout << "Block ID: " << *(int*)data_ptr << endl;
-            string file_path = "U/" + to_string(i);
+            string file_path = this->file_prefix_path + "U/" + to_string(i);
             write_data_block_to_file(file_path, data_ptr);
             data_ptr += BLOCK_SIZE;
             memcpy(&MAC_commitments_U[i], data_ptr, COMMITMENT_MAC_SIZE);
@@ -283,8 +289,8 @@ void Server::initialize()
     socket->send(reply_msg_complements);
 
     // Build C 
-    CRebuild();
 
+    CRebuild();
     // Compute MACs of commitments
     MAC_Block MAC_complement;
     l = 1<<(height-1);
@@ -410,7 +416,7 @@ void Server::update(uint8_t *update_info)
     int index = *(uint64_t*)update_info;
 #endif 
     
-    string file_path = "U/" + to_string(index-1);
+    string file_path = this->file_prefix_path + "U/" + to_string(index-1);
     write_data_block_to_file(file_path, data_ptr);
 
     Data_Block data_block;
@@ -625,7 +631,7 @@ void Server::audit(uint8_t *audit_info)
                         stored_coefs[n_points] = coeff;
                         if(i > TOP_CACHING_LEVEL)
                         {
-                            stored_paths[count].path = "H_Y/" + to_string(i) + "_" + to_string(index-l);
+                            stored_paths[count].path = this->file_prefix_path + "H_Y/" + to_string(i) + "_" + to_string(index-l);
                             stored_vects[n_points]   = new NTL::vec_ZZ;
                             stored_paths[count].data = stored_vects[n_points];
                             count++;
@@ -647,7 +653,7 @@ void Server::audit(uint8_t *audit_info)
                         stored_coefs[n_points] = coeff;
                         if(i > TOP_CACHING_LEVEL)
                         {
-                            stored_paths[count].path = "H_X/" + to_string(i) + "_" + to_string(index);
+                            stored_paths[count].path = this->file_prefix_path + "H_X/" + to_string(i) + "_" + to_string(index);
                             stored_vects[n_points]   = new NTL::vec_ZZ;
                             stored_paths[count].data = stored_vects[n_points];
                             count++;
@@ -685,7 +691,7 @@ void Server::audit(uint8_t *audit_info)
                         stored_coefs[n_points] = coeff;
                         if(i > TOP_CACHING_LEVEL)
                         {
-                            stored_paths[count].path = "H_Y/" + to_string(i) + "_" + to_string(j-l);
+                            stored_paths[count].path = this->file_prefix_path + "H_Y/" + to_string(i) + "_" + to_string(j-l);
                             stored_vects[n_points]   = new NTL::vec_ZZ;
                             stored_paths[count].data = stored_vects[n_points];
                             count++;
@@ -707,7 +713,7 @@ void Server::audit(uint8_t *audit_info)
                         stored_coefs[n_points] = coeff;
                         if(i > TOP_CACHING_LEVEL)
                         {
-                            stored_paths[count].path = "H_X/" + to_string(i) + "_" + to_string(j);
+                            stored_paths[count].path = this->file_prefix_path + "H_X/" + to_string(i) + "_" + to_string(j);
                             stored_vects[n_points]   = new NTL::vec_ZZ;
                             stored_paths[count].data = stored_vects[n_points];
                             count++;
@@ -772,9 +778,10 @@ void Server::audit(uint8_t *audit_info)
     
     for(auto &v: res) v.get();
 	res.clear();
-
-    cout << "Reading time: " << time_from(start_reading) << endl;
-
+    std::ofstream server_output(this->server_output_path, std::ios::app);
+    double reading_time = time_from(start_reading);
+    cout << "Reading time: " << reading_time << endl;
+    server_output << "Reading time: " << reading_time << endl;
     vector<int> ivec(n_points);
     iota(ivec.begin(), ivec.end(), 0);
     random_shuffle(ivec.begin(), ivec.end(), random_func);
@@ -822,12 +829,14 @@ void Server::audit(uint8_t *audit_info)
     
     for(auto &v: res) v.get();
 	res.clear();
-    
-    cout << "Computing time: " << time_from(start_computing) << endl;
+    double computing_time = time_from(start_computing);
+    cout << "Computing time: " << computing_time << endl;
+    server_output << "Computing time: " << computing_time << endl;
     for(int i = 0; i < MAX_NUM_THREADS_SERVER; ++i)
         B += B_parts[i];
-
-    cout << "Preparation time: " << time_from(start) << endl;
+    double preparation_time = time_from(start);
+    cout << "Preparation time: " << preparation_time << endl;
+    server_output << "Preparation time: " << preparation_time << endl;
 #ifndef ENABLE_KZG
     auto start_prove = clock_start();
     
@@ -873,10 +882,13 @@ void Server::audit(uint8_t *audit_info)
     }));
     for(auto &v: res) v.get();
 	res.clear();
-    
-    cout << "Proving time: " << time_from(start_prove) << endl;
+    double prove_time = time_from(start_prove);
+    cout << "Proving time: " << prove_time << endl;
+    server_output << "Proving time: " << prove_time << endl;
 
     // Send all information to client
+    cout << "server starts to send data..." << endl;
+    std::cout << "time:" << std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count() << std::endl;
     zmq::message_t reply(33*3 + proof_len);
     size_t size;
     
@@ -891,7 +903,9 @@ void Server::audit(uint8_t *audit_info)
 
     memcpy((uint8_t*)reply.data()+99, proof, proof_len);
 
-    socket->send(reply);  
+    socket->send(reply);
+    cout << "server ends to send data..." << endl;
+    std::cout << "time:" << std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count() << std::endl;
 
     delete [] proof;
 #else 
@@ -928,10 +942,13 @@ void Server::audit(uint8_t *audit_info)
             delete stored_paths[i].data;
     delete [] stored_vects;
     delete [] B_parts;
+
+    server_output.close();
 }
 
 void Server::self_test()
 {
+    int i = 0;
     while(1)
     {
         zmq::message_t request;
@@ -940,9 +957,14 @@ void Server::self_test()
         char op = *(char*)request.data();
         switch(op)
         {
-            case 'A':
+            case 'A': {
+                std::ofstream server_output(this->server_output_path, std::ios::app);
+                server_output << "audit count:" << i + 1 << endl;
+                server_output.close();
                 audit((uint8_t*)request.data() + 1);
+                i++;
                 break;
+            }
             case 'U':
                 // Update
                 update((uint8_t*)request.data() + 1);
@@ -1335,8 +1357,10 @@ void Server::HRebuildX(int level)
         if(i == level - 1) is_last_step = true;
         if(i + 1 <= TOP_CACHING_LEVEL)
             mix(true, i);
-        else 
-            mix(true, "H_X/", i, is_last_step);
+        else {
+            string str = this->file_prefix_path + "H_X/";
+            mix(true, const_cast<char*>(str.c_str()), i, is_last_step);
+        }
     }
 
     if(level <= TOP_CACHING_LEVEL)
@@ -1360,9 +1384,11 @@ void Server::HRebuildY(int level)
         if(i == level - 1) is_last_step = true;
         if(i + 1 <= TOP_CACHING_LEVEL)
             mix(false, i);
-        else 
-            mix(false, "H_Y/", i, is_last_step);
-        
+        else {
+            string str = this->file_prefix_path + "H_Y/";
+            //这里有一个string转char*
+            mix(false, const_cast<char*>(str.c_str()), i, is_last_step);
+        }
         database_H[i].empty        = true;
         MAC_commitments_H[i].empty = true;
         MAC_alignments_H[i].empty  = true;
@@ -1515,7 +1541,7 @@ void Server::CRebuild_Cached()
         {
             for(int i = start_pos; i < end_pos; ++i)
             {
-                string file_path = "U/" + to_string(i);
+                string file_path = this->file_prefix_path + "U/" + to_string(i);
                 read_data_block_from_file(file_path, database_H[height-1].X[i]);
                 database_H[height-1].Y[i].SetLength(NUM_CHUNKS);
                 for(int j = 0; j < NUM_CHUNKS; ++j)
@@ -1862,12 +1888,12 @@ void Server::CRebuild_No_Cached()
         res.push_back(pool.enqueue([this, start_pos, end_pos, &wt_ZZ, &wt_MAC]() 
         {
             Data_Block X, Y;
-            string prefix_path_x = "H_X/" + to_string(height-1) + "_";
-            string prefix_path_y = "H_Y/" + to_string(height-1) + "_";
+            string prefix_path_x = this->file_prefix_path + "H_X/" + to_string(height-1) + "_";
+            string prefix_path_y = this->file_prefix_path + "H_Y/" + to_string(height-1) + "_";
 
             for(int i = start_pos; i < end_pos; ++i)
             {
-                string file_path = "U/" + to_string(i);
+                string file_path = this->file_prefix_path + "U/" + to_string(i);
                 read_data_block_from_file(file_path, X);
                 Y.SetLength(NUM_CHUNKS);
                 for(int j = 0; j < NUM_CHUNKS; ++j)
@@ -1931,7 +1957,7 @@ void Server::CRebuild_No_Cached()
                         NTL::ZZ       u, t;
                         NTL::vec_ZZ   Xk, Xkm2;
                         MAC_Block     um, tm;
-                        string        prefix_path = "H_X/" + to_string(height-1) + "_";
+                        string        prefix_path = this->file_prefix_path + "H_X/" + to_string(height-1) + "_";
 
                         for(int k = start_pos; k < end_pos; k += m)
                         {
@@ -2004,7 +2030,7 @@ void Server::CRebuild_No_Cached()
                     NTL::ZZ      u, t;
                     NTL::vec_ZZ  Xk, Xkm2;
                     MAC_Block    um, tm;
-                    string       prefix_path = "H_X/" + to_string(height-1) + "_";
+                    string       prefix_path = this->file_prefix_path + "H_X/" + to_string(height-1) + "_";
                     NTL::ZZ_p    vi = NTL::power(v, start_pos);
                     NTL::ZZ      vi_ZZ;
                     conv(vi_ZZ, vi);
@@ -2109,7 +2135,7 @@ void Server::CRebuild_No_Cached()
                         NTL::ZZ      u, t;
                         NTL::vec_ZZ  Yk, Ykm2;
                         MAC_Block    um, tm;
-                        string       prefix_path = "H_Y/" + to_string(height-1) + "_";
+                        string       prefix_path = this->file_prefix_path + "H_Y/" + to_string(height-1) + "_";
                         
                         for(int k = start_pos; k < end_pos; k += m)
                         {
@@ -2181,7 +2207,7 @@ void Server::CRebuild_No_Cached()
                     NTL::ZZ      u, t;
                     NTL::vec_ZZ  Yk, Ykm2;
                     MAC_Block    um, tm;
-                    string       prefix_path = "H_Y/" + to_string(height-1) + "_";
+                    string       prefix_path = this->file_prefix_path + "H_Y/" + to_string(height-1) + "_";
                     NTL::ZZ_p    vi = NTL::power(v, start_pos);
                     NTL::ZZ      vi_ZZ;
                     conv(vi_ZZ, vi);
@@ -2453,3 +2479,4 @@ void Server::inner_product_prove(NTL::vec_ZZ &a, NTL::vec_ZZ &b, uint8_t *proof)
 #endif
 
 #endif
+

@@ -15,7 +15,7 @@
 #include <openssl/aes.h>
 #include "Utils/utils.h"
 #include "config.hpp"
-
+#include <chrono>
 using namespace     std;
 
 int*                audit_values;
@@ -76,12 +76,18 @@ class Client
         zmq::context_t*  context;
         zmq::socket_t*   socket;
 
+        //data path
+        string          datafile_path;
+        int             data_buffer_size;
+        string          client_output_path;
+
         Client();
         ~Client();
 
         void get_generators();
         void create_data_block(int block_id, Data_Block &data_block);
         void initialize(int num_blocks);
+        void my_initialize();
         void compute_commitment(Data_Block &data_block, MAC_Block &commitment);
         void compute_MAC_complement(int level, int index, MAC_Block &MAC_complement);
 #ifndef ENABLE_KZG
@@ -92,6 +98,7 @@ class Client
         void update(int block_id);
         void audit();
         void self_test();
+        void my_test();
         
         // // Hierarchical log structure H
         void HRebuildX(int level);
@@ -177,7 +184,7 @@ void Client::initialize(int num_blocks)
     AES_set_encrypt_key(SECRET_KEY, AES_KEY_SIZE<<3, &MAC_PRF_key);
 
     // Other data structures for audit 
-    write_step    = 1;
+    write_step    = 0;
     height        = ceil(log2(num_blocks)) + 1;
     complements_U = new MAC_Block[num_blocks];
     complements_H = new MAC_Layer[height];
@@ -227,7 +234,7 @@ void Client::initialize(int num_blocks)
             }
             // Process MAC parts
             compute_commitment(data_block, commitment);
-            compute_MAC_complement(0, i + 1, complements_U[i]);
+            compute_MAC_complement(0, i, complements_U[i]);
 #ifndef ENABLE_KZG
             secp256k1_gej_add_var(&commitment, &commitment, &complements_U[i], NULL);
             memcpy((void*)data_ptr, &commitment, COMMITMENT_MAC_SIZE);
@@ -257,7 +264,7 @@ void Client::initialize(int num_blocks)
     MAC_Block updated_MAC_complement;
     MAC_Block temp_gej;
     int l = 1<<(height-1);
-    zmq::message_t request((2<<height) * COMMITMENT_MAC_SIZE);
+    zmq::message_t request((1<<height) * COMMITMENT_MAC_SIZE);
     uint8_t *data_ptr = (uint8_t*)request.data();
 
 #ifndef ENABLE_KZG
@@ -464,7 +471,7 @@ void Client::update(int block_id)
 
     // Compute MAC complement with current time step
     MAC_Block MAC_complement;
-    compute_MAC_complement(0, block_id, MAC_complement);
+    compute_MAC_complement(0, block_id - 1, MAC_complement);
 
     // Compute updated MAC of commitment
     MAC_Block MAC_commitment;
@@ -492,7 +499,7 @@ void Client::update(int block_id)
         complements_H[height-1].Y = new MAC_Block[1<<(height-1)];
 
         for(int i = 0; i < num_blocks; ++i) {
-            compute_MAC_complement(0, i+1, complements_U[i]);
+            compute_MAC_complement(0, i, complements_U[i]);
             write_step++;
         }
 
@@ -545,7 +552,7 @@ void Client::update(int block_id)
     }
 
     // Main phase
-    auto start = clock_start();
+    // auto start = clock_start();
     
     // Create update request 
     zmq::message_t request(1 + BLOCK_SIZE + ((2<<updated_level)+1)*COMMITMENT_MAC_SIZE);
@@ -621,7 +628,7 @@ void Client::update(int block_id)
     socket->recv(&reply);
 
     // Accumulate time cost of each request
-    total_time += time_from(start);
+    // total_time += time_from(start);
 
     cout << "[SERVER RESPONSE]: " << reply.to_string() << endl;
 
@@ -633,6 +640,7 @@ void Client::update(int block_id)
 void Client::audit()
 {
     // Preprocessing phase
+    auto start = clock_start();
     complements_H = new MAC_Layer[height];
 
     long saved_write_step = write_step;
@@ -643,18 +651,18 @@ void Client::audit()
             complements_H[i].X = new MAC_Block[1<<i];
             complements_H[i].Y = new MAC_Block[1<<i];
 
-            write_step &= ~((1<<i)-1);
-            for(int j = 0; j < (1<<i); ++j)
-            {
-                compute_MAC_complement(i, j, complements_H[i].X[j]);
-                compute_MAC_complement(i, j + (1<<i), complements_H[i].Y[j]);
-            }
+            // write_step &= ~((1<<i)-1);
+            // for(int j = 0; j < (1<<i); ++j)
+            // {
+            //     compute_MAC_complement(i, j, complements_H[i].X[j]);
+            //     compute_MAC_complement(i, j + (1<<i), complements_H[i].Y[j]);
+            // }
         }
-        write_step = saved_write_step;
+        // write_step = saved_write_step;
     }
 
     // Main phase
-    auto start = clock_start();
+    // auto start = clock_start();
 
     int l        = 1;
     int n_points = 0;
@@ -688,6 +696,7 @@ void Client::audit()
     {
         if(((write_step % num_blocks)>>i) & 0x1 || (i == height-1))
         {
+            write_step &= ~((1<<i)-1);
             if((l<<1) > NUM_CHECK_AUDIT)
             {
                 int *indices      = audit_values_ptr;
@@ -700,16 +709,22 @@ void Client::audit()
                     int coeff = abs(coeffs[j]);
 #ifndef ENABLE_KZG
                     secp256k1_scalar_set_int(&sc[n_points], coeff);
-                    if(index >= l)
+                    if(index >= l) {
+                        compute_MAC_complement(i, index, complements_H[i].Y[index-l]);
                         secp256k1_ge_set_gej(&pt[n_points], &complements_H[i].Y[index-l]);
-                    else 
+                    } else { 
+                        compute_MAC_complement(i, index, complements_H[i].X[index]);
                         secp256k1_ge_set_gej(&pt[n_points], &complements_H[i].X[index]);
+                    }
 #else 
                     bn254_scalar_set_int(sc[n_points], coeff);
-                    if(index >= l)
+                    if(index >= l) {
+                        compute_MAC_complement(i, index, complements_H[i].Y[index-l]);
                         memcpy(pt[n_points], complements_H[i].Y[index-l], COMMITMENT_MAC_SIZE);
-                    else 
+                    } else { 
+                        compute_MAC_complement(i, index, complements_H[i].X[index]);
                         memcpy(pt[n_points], complements_H[i].X[index], COMMITMENT_MAC_SIZE);
+                    }
 #endif
                     n_points++;
                 }
@@ -725,20 +740,27 @@ void Client::audit()
 #ifndef ENABLE_KZG
                     secp256k1_scalar_set_int(&sc[n_points], coeff);
 
-                    if(j >= l)
+                    if(j >= l) {
+                        compute_MAC_complement(i, j, complements_H[i].Y[j-l]);
                         secp256k1_ge_set_gej(&pt[n_points], &complements_H[i].Y[j-l]);
-                    else 
+                    } else {
+                        compute_MAC_complement(i, j, complements_H[i].X[j]);
                         secp256k1_ge_set_gej(&pt[n_points], &complements_H[i].X[j]);    
+                    }
 #else 
                     bn254_scalar_set_int(sc[n_points], coeff);
-                    if(j >= l)
+                    if(j >= l) {
+                        compute_MAC_complement(i, j, complements_H[i].Y[j-l]);
                         memcpy(pt[n_points], complements_H[i].Y[j-l], COMMITMENT_MAC_SIZE);
-                    else 
+                    } else { 
+                        compute_MAC_complement(i, j, complements_H[i].X[j]);
                         memcpy(pt[n_points], complements_H[i].X[j], COMMITMENT_MAC_SIZE);
+                    }
 #endif 
                     n_points++;
                 }
             }
+            write_step = saved_write_step;
         }
         l <<= 1;
     }
@@ -797,7 +819,8 @@ void Client::audit()
     // Wait for reply
     zmq::message_t reply;
     socket->recv(&reply);
-
+    cout << "client recives data..." << endl;
+    std::cout << "time:" << std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count() << std::endl;
 #ifndef ENABLE_KZG
     // Check results
     secp256k1_ge  temp;
@@ -841,8 +864,10 @@ void Client::audit()
     }));
     for(auto &v: res) v.get();
 	res.clear();
-
-    cout << "Verification time: " << time_from(start_verify) << endl;
+    double verify_time = time_from(start_verify);
+    cout << "Verification time: " << verify_time << endl;
+    std::ofstream client_output(this->client_output_path, std::ios::app);
+    client_output << "Verification time: " << verify_time << endl;
 #else 
     // Compute MAC based on commitment received from server
     MAC_Block commitment;
@@ -875,7 +900,9 @@ void Client::audit()
         exit(1);
     }
 #endif    
-    cout << "Audit time: " << time_from(start) << endl; 
+    double audit_time = time_from(start);
+    cout << "Audit time: " << audit_time << endl;
+    client_output << "Audit time: " << audit_time << endl;
     
     // Deallocate memory used for computing MAC complements
     for(int i = 0; i < height; ++i)
@@ -889,33 +916,280 @@ void Client::audit()
     delete [] complements_H;
     delete [] sc;
     delete [] pt;
+
+    client_output.close();
 }
 
 void Client::self_test()
 {   
     // This total_time is used to compute average time cost
-    total_time = 0;
-    int k = 0;
-    for(; k < 10; ++k)
-    {
-        cout << "Round #" << k << endl;
-        // audit();
-        for(int i = 0; i < num_blocks; ++i)
-        {
-            cout << "Iteration i: " << i << endl;
-            update(i+1);
-            // audit();
-            if(i == num_blocks-1) 
-            {
-                for(int j = 0; j < 100; ++j)
-                    audit();
-            }
-            // check_MAC_complements();
-        }
-    } 
+    // total_time = 0;
+    // int k = 0;
+    // for(; k < 10; ++k)
+    // {
+    //     cout << "Round #" << k << endl;
+    //     // audit();
+    //     for(int i = 0; i < num_blocks; ++i)
+    //     {
+    //         cout << "Iteration i: " << i << endl;
+    //         update(i+1);
+    //         audit();
+    //         // if(i == num_blocks-1) 
+    //         // {
+    //         //     for(int j = 0; j < 100; ++j)
+    //         //         audit();
+    //         // }
+    //         // check_MAC_complements();
+    //     }
+    // } 
     
-    cout << "Total number of requests: " << (k * (num_blocks - 1)) << endl;
-    cout << "Amortized cost for each request: " << (total_time/(k * (num_blocks - 1))) << endl;
+    // cout << "Total number of requests: " << (k * (num_blocks - 1)) << endl;
+    // cout << "Amortized cost for each request: " << (total_time/(k * (num_blocks - 1))) << endl;
+    total_time = 0;
+    for (int i = 0; i < num_blocks; i++) {
+        if (i == num_blocks - 1) {
+            audit();
+        }
+        update(i + 1);
+    }
+    cout << "audit time: " << total_time << endl;
+}
+
+void Client::my_test()
+{
+    // cout << "Total number of requests: " << (k * (num_blocks - 1)) << endl;
+    // cout << "Amortized cost for each request: " << (total_time/(k * (num_blocks - 1))) << endl;
+    // total_time = 0;
+    for (int i = 0; i < num_blocks; i++) {
+        //1GB为8191， 10GB为32767   65535   262143
+        if (i == 8191 || i == 8192) {
+            std::ofstream client_output(this->client_output_path, std::ios::app);
+            client_output << "audit count:" << i + 1 << endl;
+            client_output.close();
+            audit();
+            if (i == 8192) {
+                break;
+            }
+        }
+        update(i + 1);
+    }
+    // cout << "audit time: " << total_time << endl;
+}
+
+void Client::my_initialize()
+{
+    this->write_step = 0;
+    //1 GB num_blocks 262144
+    //10 GB num_blocks 2621440  4194304
+    //100 GB num_blocks 26214400    33554432
+    //1 TB num_blocks 268435456
+    this->num_blocks = 262144;
+    this->datafile_path = "/data/ls/porla";
+    // read one block size
+    this->data_buffer_size = 32;
+    this->client_output_path = "/data/ls/porla/data1G/data_client_output";
+    // NTL Init
+    NTL::ZZ_p::init(PRIME_MODULUS);
+    NTL::ZZ_p g = NTL::to_ZZ_p(GENERATOR);
+    NTL::ZZ a   = (PRIME_MODULUS-1)/(2 * num_blocks);
+    w           = NTL::power(g, a);
+
+    // Public value h for computing MACs of commitments
+#ifndef ENABLE_KZG
+    // Generate a secket key
+    secp256k1_scalar_set_int(&alpha, 0);
+    memcpy(alpha.d, SECRET_KEY, 16);
+
+    random_group_element_test(&h_mac);
+
+    // Get generators gi from server
+    generators       = new secp256k1_ge[NUM_GENERATORS];
+    alpha_generators = new secp256k1_ge[NUM_CHUNKS];
+#else 
+    GoSlice gs_tau_key;
+    gs_tau_key.data   = (void*)TAU_KEY;
+    gs_tau_key.len    = gs_tau_key.cap   = 16;
+
+    GoSlice gs_alpha_key;
+    gs_alpha_key.data = (void*)SECRET_KEY;
+    gs_alpha_key.len  = gs_alpha_key.cap = 16;
+
+    init_key(&gs_tau_key, &gs_alpha_key);
+#endif
+    get_generators();
+    
+    // PRF to generate one-time keys
+    encryption_level = (int*)&PRF_value[0];
+    encryption_index = (int*)&PRF_value[4];
+    encryption_time  = (long*)&PRF_value[8];
+
+    // Init AES to use as a PRF function
+    AES_set_encrypt_key(SECRET_KEY, AES_KEY_SIZE<<3, &MAC_PRF_key);
+
+    // Other data structures for audit 
+    write_step    = 0;
+    height        = ceil(log2(num_blocks)) + 1;
+    complements_U = new MAC_Block[num_blocks];
+    complements_H = new MAC_Layer[height];
+    complements_H[height-1].X = new MAC_Block[2<<(height-1)];
+    complements_H[height-1].Y = new MAC_Block[2<<(height-1)];
+    
+    zmq::message_t request_msg(sizeof(num_blocks));
+    memcpy((void*)request_msg.data(), &num_blocks, sizeof(num_blocks));
+    socket->send(request_msg);
+
+    zmq::message_t reply;
+    socket->recv(&reply);
+    cout << "[SERVER RESPONSE]: " << reply.to_string() << endl;
+    
+#ifndef ENABLE_KZG
+    secp256k1_scalar data_chunk;
+#else 
+    bn254_scalar data_chunk;
+#endif 
+    Data_Block data_block;
+    data_block.SetLength(NUM_CHUNKS);
+
+    MAC_Block commitment;
+
+    // read data
+    // std::ifstream data(this->datafile_path, std::ios::binary);
+    // if (!data.is_open()) {
+    //     std::cerr << "Failed to open file: " << this->datafile_path << std::endl;
+    // }
+    int i = 0;
+    int remaining = num_blocks;
+    while(remaining > 0)
+    {
+        int num_blocks_sent = (MAX_BLOCKS_SENT < remaining) ? MAX_BLOCKS_SENT : remaining;
+        zmq::message_t request(num_blocks_sent*(BLOCK_SIZE+COMMITMENT_MAC_SIZE));
+        uint8_t *data_ptr = (uint8_t*)request.data();
+
+        for(int k = 0; k < num_blocks_sent; ++k)
+        {
+            // Process data parts
+            data_block[0] = i + 1;
+            for(int j = 1; j < NUM_CHUNKS; ++j)
+            {
+                // char buffer[this->data_buffer_size];
+                // data.read(buffer, this->data_buffer_size);
+                // std::streamsize bytesRead = data.gcount();
+                // NTL::ZZ result(0);
+                // // cout << "error1" << endl;
+                // for (int cnt = 0; cnt < bytesRead; ++cnt) {
+                //     unsigned int byteValue = static_cast<unsigned int>(buffer[cnt]);
+                //     result *= 256;
+                //     result += byteValue;
+                // }
+                // // cout << result << endl;
+                // // cout << "error2" << endl;
+                // if (bytesRead > 0) {
+                //     data_block[j] = result;
+                // } else {
+                //     data_block[j] = NTL::to_ZZ(NTL::RandomBits_ZZ(256));
+                // }
+                data_block[j] = NTL::to_ZZ(NTL::RandomBits_ZZ(256));
+                // cout << "error3" << endl;
+            }
+            for(int j = 0; j < NUM_CHUNKS; ++j)
+            {
+#ifndef ENABLE_KZG
+                convert_ZZ_to_scalar(data_chunk, data_block[j]);
+#else 
+                convert_ZZ_to_arr(data_chunk, data_block[j]);
+#endif 
+                memcpy((void*)data_ptr, &data_chunk, sizeof(data_chunk));
+                data_ptr += sizeof(data_chunk);
+            }
+            // Process MAC parts
+            compute_commitment(data_block, commitment);
+            compute_MAC_complement(0, i, complements_U[i]);
+#ifndef ENABLE_KZG
+            secp256k1_gej_add_var(&commitment, &commitment, &complements_U[i], NULL);
+            memcpy((void*)data_ptr, &commitment, COMMITMENT_MAC_SIZE);
+#else 
+            bn254_add(commitment, complements_U[i]);
+            memcpy((void*)data_ptr, commitment, COMMITMENT_MAC_SIZE);
+#endif
+            data_ptr += COMMITMENT_MAC_SIZE;
+
+            cout << "Block ID: " << data_block[0] << endl;
+            i++;
+        }
+
+        // Send data blocks to server
+        socket->send(request);
+
+        // Receive response from server
+        socket->recv(&reply);
+        cout << "[SERVER RESPONSE]: " << reply.to_string() << endl;
+        remaining -= num_blocks_sent;
+    }
+
+    // Call CRebuild the first time
+    CRebuild();
+
+    // Create MAC complements for database C
+    MAC_Block updated_MAC_complement;
+    MAC_Block temp_gej;
+    int l = 1<<(height-1);
+    zmq::message_t request((1<<height) * COMMITMENT_MAC_SIZE);
+    uint8_t *data_ptr = (uint8_t*)request.data();
+
+#ifndef ENABLE_KZG
+    for(int i = 0; i < (l<<1); ++i)
+    {
+        compute_MAC_complement(height-1, i, updated_MAC_complement);
+        if(i >= l)
+        {
+            secp256k1_gej_neg(&temp_gej, &complements_H[height-1].Y[i-l]);
+            secp256k1_gej_add_var(&temp_gej, &temp_gej, &updated_MAC_complement, NULL);
+            memcpy((void*)data_ptr, &temp_gej, COMMITMENT_MAC_SIZE);
+        }
+        else 
+        {
+            secp256k1_gej_neg(&temp_gej, &complements_H[height-1].X[i]);
+            secp256k1_gej_add_var(&temp_gej, &temp_gej, &updated_MAC_complement, NULL);
+            memcpy((void*)data_ptr, &temp_gej, COMMITMENT_MAC_SIZE);
+        }
+        data_ptr += COMMITMENT_MAC_SIZE;
+    }
+#else 
+    for(int i = 0; i < (l<<1); ++i)
+    {
+        compute_MAC_complement(height-1, i, updated_MAC_complement);
+        if(i >= l)
+        {
+            bn254_neg(complements_H[height-1].Y[i-l]);
+            bn254_add(complements_H[height-1].Y[i-l], updated_MAC_complement);
+            memcpy((void*)data_ptr, complements_H[height-1].Y[i-l], COMMITMENT_MAC_SIZE);
+        }
+        else 
+        {
+            bn254_neg(complements_H[height-1].X[i]);
+            bn254_add(complements_H[height-1].X[i], updated_MAC_complement);
+            memcpy((void*)data_ptr, complements_H[height-1].X[i], COMMITMENT_MAC_SIZE);
+        }
+        data_ptr += COMMITMENT_MAC_SIZE;
+    }
+#endif 
+
+    // Send database to server
+    socket->send(request);
+
+    // Receive response from server
+    socket->recv(&reply);
+    cout << "[SERVER RESPONSE]: " << reply.to_string() << endl;
+    
+    // Deallocate initial information
+    delete [] complements_U;
+    delete [] complements_H[height-1].X;
+    delete [] complements_H[height-1].Y;
+    delete [] complements_H;
+
+     // Allocate a buffer for audit operation
+    audit_values = new int[(NUM_CHECK_AUDIT<<1)*height];
+    // data.close();
 }
 
 void Client::mix(MAC_Blocks A0, MAC_Blocks A1, MAC_Blocks A, int length)
@@ -1664,3 +1938,4 @@ bool Client::verify_kzg_proof(uint8_t *kzg_proof)
 #endif 
 
 #endif
+
