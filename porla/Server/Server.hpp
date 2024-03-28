@@ -262,6 +262,7 @@ void Server::initialize()
         int k = 0;
         while((k < num_blocks_received))
         {
+            //存在问题 id由一个chunk32字节存储，可能大于一个int
             cout << "Block ID: " << *(int*)data_ptr << endl;
             string file_path = this->file_prefix_path + "U/" + to_string(i);
             write_data_block_to_file(file_path, data_ptr);
@@ -581,7 +582,7 @@ void Server::audit(uint8_t *audit_info)
     secp256k1_gej     combined_MAC;
     secp256k1_gej     combined_align;
     secp256k1_ge      temp;
-
+    //每个点的ρ 标签 和align
     secp256k1_scalar  *sc  = new secp256k1_scalar[NUM_CHECK_AUDIT*height];
     secp256k1_ge      *ptc = new secp256k1_ge[NUM_CHECK_AUDIT*height];
     secp256k1_ge      *pta = new secp256k1_ge[NUM_CHECK_AUDIT*height];
@@ -629,6 +630,7 @@ void Server::audit(uint8_t *audit_info)
                     if(index >= l) 
                     {
                         stored_coefs[n_points] = coeff;
+                        //初始化构建C的时候是把数据全部读出来的，没有考虑最多只读TOP_CACHING_LEVEL层的数据，但是可以实现
                         if(i > TOP_CACHING_LEVEL)
                         {
                             stored_paths[count].path = this->file_prefix_path + "H_Y/" + to_string(i) + "_" + to_string(index-l);
@@ -750,7 +752,7 @@ void Server::audit(uint8_t *audit_info)
     random_shuffle(shuffled_indices.begin(), shuffled_indices.end(), random_func);
 
     auto start_reading = clock_start();
-
+    //这里就是对上面没有缓冲的数据读出
     for(int t = 0; t < MAX_NUM_THREADS_SERVER-1; ++t)
     {
         res.push_back(pool.enqueue([this, t, start_pos, end_pos, stored_paths, shuffled_indices]() 
@@ -802,6 +804,7 @@ void Server::audit(uint8_t *audit_info)
             B_parts[t].SetLength(NUM_CHUNKS);
             for(int i = start_pos; i < end_pos; ++i)
             {
+                //这里就是ρ乘以数据H
                 int real_index = ivec[i];
 		        for(int j = 0; j < NUM_CHUNKS; ++j)
                     B_parts[t][j] += stored_coefs[real_index] * (*stored_vects[real_index])[j];
@@ -848,14 +851,20 @@ void Server::audit(uint8_t *audit_info)
     size_t scratch_size  = secp256k1_pippenger_scratch_size(n_points, bucket_window);
     secp256k1_scratch *scratch = secp256k1_scratch_create(&ctx->error_callback, scratch_size + PIPPENGER_SCRATCH_OBJECTS*ALIGNMENT);
     /* Note for future optimization: ecmult_multi_var can be accomplished in parallel */
+    //这里算出了combined_MAC 即联合的标签 sc*ptc->combined_MAC
     secp256k1_ecmult_multi_var(&ctx->error_callback, scratch, &combined_MAC, &szero, ecmult_multi_callback, &data, n_points);
 
     data.sc = sc;
     data.pt = pta;
     secp256k1_gej_set_infinity(&combined_align);
     /* Note for future optimization: ecmult_multi_var can be accomplished in parallel */
+    //sc*pta->combined_align
+    //szero一直等于0
+    //data_h大于10层的时候C的构建时对data取余了，然后align为每个data的g^-np，所以相当于左边data取余了，右边就要乘一个g^-np相当于取余
+    //无论总的data取余还是C的构建时data的取余
     secp256k1_ecmult_multi_var(&ctx->error_callback, scratch, &combined_align, &szero, ecmult_multi_callback, &data, n_points);
-
+    //B是数据 combined_align，好像指数多乘以一个ρ发给客户端后在与α相乘补全？
+    //B*G+combined_align->combined_align
     align_MAC(B, combined_align);
     
     MAC_Block commitment;
@@ -867,6 +876,7 @@ void Server::audit(uint8_t *audit_info)
 
     NTL::vec_ZZ A;
     NTL::ZZ     A_value;
+    //A_value就是x
     conv(A_value, audit_values[n_points]);
     A.SetLength(NUM_CHUNKS);
     for(int i = 0; i < NUM_CHUNKS; ++i)
@@ -1505,6 +1515,7 @@ int Server::HAdd(Data_Block &data, MAC_Block &MAC)
 void Server::CRebuild()
 {
     if(height - 1 > TOP_CACHING_LEVEL)
+    //这里小于10等于10的数据没有存到database_H中只存在了H_X/index文件里，导致审计从内存里取的时候没有数据
         CRebuild_No_Cached();
     else 
         CRebuild_Cached();
@@ -1530,7 +1541,7 @@ void Server::CRebuild_Cached()
 #endif
     ThreadPool pool(MAX_NUM_THREADS_SERVER);
     vector<future<void>> res;
-
+    //巨大bug 例如num_blocks等于5的时候，当t=5时就溢出了
     int start_pos = 0;
     int end_pos   = num_blocks/MAX_NUM_THREADS_SERVER;
 
@@ -2000,6 +2011,7 @@ void Server::CRebuild_No_Cached()
                             }
                             else 
                             {
+                                //这里对最高一层即C的数据进行取余写回，然后MAC_alignments_H=(data%PRIME_MODULUS-data)%GROUP_ORDER)*G
                                 align_MAC(Xk, MAC_alignments_H[height-1].X[k], thr);
                                 align_MAC(Xkm2, MAC_alignments_H[height-1].X[k+m2], thr);
                                 write_error_code_to_file_256b(prefix_path, Xk, k);
