@@ -13,7 +13,7 @@
 #define         TOP_CACHING_LEVEL           10
 
 // #define         ENABLE_KZG                  1
-
+#define         ENABLE_LOG                   1
 const int       MAX_NUM_THREADS_SERVER      =  8;
 const int       MAX_NUM_THREADS_CLIENT      =  8;
 const int       SERVER_PORT                 =  8888;
