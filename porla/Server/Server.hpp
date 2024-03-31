@@ -161,8 +161,10 @@ Server::~Server()
 
 void Server::initialize()
 {
-    this->server_output_path = "/data/ls/porla/data1G/data_server_output";
-    this->file_prefix_path = "/data/ls/porla/data1G/";
+    // this->server_output_path = "/data/ls/porla/data1G/data_server_output";
+    // this->file_prefix_path = "/data/ls/porla/data1G/";
+    this->server_output_path = "/root/porla/porla/porla/Server/data_server_output";
+    this->file_prefix_path = "/root/porla/porla/porla/Server/";
     // Init NTL:ZZ_p
     NTL::ZZ_p::init(PRIME_MODULUS);
 #ifndef ENABLE_KZG

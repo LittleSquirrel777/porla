@@ -85,9 +85,9 @@ class Client
         string          datafile_path;
         int             data_buffer_size;
         string          client_output_path;
-        #ifdef ENABLE_LOG
+#ifdef ENABLE_LOG
         xlsxiowriter handle;
-        #endif
+#endif
 
         Client();
         ~Client();
@@ -979,7 +979,7 @@ void Client::self_test()
 void Client::my_test()
 {
 #ifdef ENABLE_LOG
-	if ((handle = xlsxiowrite_open("./log.xlsx", "log")) == NULL) {
+	if ((handle = xlsxiowrite_open("./ClientLog.xlsx", "ClientLog")) == NULL) {
 		fprintf(stderr, "Error creating .xlsx file\n");
 	}
     xlsxiowrite_add_column(handle, "type", 16);
@@ -988,7 +988,6 @@ void Client::my_test()
 	xlsxiowrite_add_column(handle, "uid", 16);
     xlsxiowrite_add_column(handle, "auid", 16);
 	xlsxiowrite_add_column(handle, "ses", 16);
-    xlsxiowrite_add_column(handle, "subj", 16);
 	xlsxiowrite_add_column(handle, "op", 16);
     xlsxiowrite_add_column(handle, "acct", 16);
 	xlsxiowrite_add_column(handle, "exe", 16);
@@ -1001,52 +1000,24 @@ void Client::my_test()
 #endif
     for (int i = 0; i < num_blocks; i++) {
         //1GB为8191， 10GB为32767   65535   262143
-        if (i == 8191 || i == 8192) {
-            std::ofstream client_output(this->client_output_path, std::ios::app);
-            client_output << "audit count:" << i + 1 << endl;
-            client_output.close();
-#ifdef ENABLE_LOG
-            xlsxiowrite_add_cell_string(handle, "USER_CMD");
-            auto time = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
-            // auto msg = "update("+time+":"+to_string(i)+")";
-            std::stringstream ss;
-            ss << "update(" << time << ":" << i << ")";
-            string msg = ss.str();
-            xlsxiowrite_add_cell_string(handle, &msg[0]);
-	        xlsxiowrite_add_cell_int(handle, getpid());
-            xlsxiowrite_add_cell_int(handle, getuid());
-            xlsxiowrite_add_cell_int(handle, getuid());
-            xlsxiowrite_add_cell_int(handle, getsid(0));
-            xlsxiowrite_add_cell_string(handle, "AUDIT");
-            xlsxiowrite_add_cell_string(handle, "root");
-            xlsxiowrite_add_cell_string(handle, "/root/porla/porla/");
-            xlsxiowrite_add_cell_string(handle, "null");
-            xlsxiowrite_add_cell_string(handle, "172.30.181.249");
-            xlsxiowrite_add_cell_string(handle, "172.30.181.249");
-            xlsxiowrite_add_cell_string(handle, "pts/4");
-            xlsxiowrite_add_cell_string(handle, "success");
-            xlsxiowrite_next_row(handle);
-#endif
-            audit();
-            if (i == 8192) {
-                break;
-            }
-        }
+        // if (i == 8191 || i == 8192) {
+        std::ofstream client_output(this->client_output_path, std::ios::app);
+        client_output << "audit count:" << i + 1 << endl;
+        client_output.close();
 #ifdef ENABLE_LOG
         xlsxiowrite_add_cell_string(handle, "USER_CMD");
         auto time = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
-        // auto msg = "update("+time+":"+to_string(i)+")";
-        std::stringstream ss;
-        ss << "update(" << time << ":" << i << ")";
-        string msg = ss.str();
-        xlsxiowrite_add_cell_string(handle, &msg[0]);
+        std::stringstream sss;
+        sss << "update(" << time << ":" << i << ")";
+        string msg2 = sss.str();
+        xlsxiowrite_add_cell_string(handle, &msg2[0]);
 	    xlsxiowrite_add_cell_int(handle, getpid());
         xlsxiowrite_add_cell_int(handle, getuid());
         xlsxiowrite_add_cell_int(handle, getuid());
         xlsxiowrite_add_cell_int(handle, getsid(0));
         xlsxiowrite_add_cell_string(handle, "UPDATE");
         xlsxiowrite_add_cell_string(handle, "root");
-        xlsxiowrite_add_cell_string(handle, "/root/porla/porla/");
+        xlsxiowrite_add_cell_string(handle, "/root/porla/porla/Client/");
         xlsxiowrite_add_cell_string(handle, "null");
         xlsxiowrite_add_cell_string(handle, "172.30.181.249");
         xlsxiowrite_add_cell_string(handle, "172.30.181.249");
@@ -1055,7 +1026,32 @@ void Client::my_test()
         xlsxiowrite_next_row(handle);
 #endif
         update(i + 1);
+#ifdef ENABLE_LOG
+        xlsxiowrite_add_cell_string(handle, "USER_CMD");
+        time = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+        std::stringstream ss;
+        ss << "audit(" << time << ":" << i << ")";
+        string msg1 = ss.str();
+        xlsxiowrite_add_cell_string(handle, &msg1[0]);
+	    xlsxiowrite_add_cell_int(handle, getpid());
+        xlsxiowrite_add_cell_int(handle, getuid());
+        xlsxiowrite_add_cell_int(handle, getuid());
+        xlsxiowrite_add_cell_int(handle, getsid(0));
+        xlsxiowrite_add_cell_string(handle, "AUDIT");
+        xlsxiowrite_add_cell_string(handle, "root");
+        xlsxiowrite_add_cell_string(handle, "/root/porla/porla/Client/");
+        xlsxiowrite_add_cell_string(handle, "null");
+        xlsxiowrite_add_cell_string(handle, "172.30.181.249");
+        xlsxiowrite_add_cell_string(handle, "172.30.181.249");
+        xlsxiowrite_add_cell_string(handle, "pts/4");
+        xlsxiowrite_add_cell_string(handle, "success");
+        xlsxiowrite_next_row(handle);
+#endif
+        audit();
     }
+#ifdef ENABLE_LOG
+	xlsxiowrite_close(handle);
+#endif
     // cout << "audit time: " << total_time << endl;
 }
 
@@ -1066,11 +1062,12 @@ void Client::my_initialize()
     //10 GB num_blocks 2621440  4194304
     //100 GB num_blocks 26214400    33554432
     //1 TB num_blocks 268435456
-    this->num_blocks = 262144;
+    this->num_blocks = 2048;
     this->datafile_path = "/data/ls/porla";
     // read one block size
     this->data_buffer_size = 32;
-    this->client_output_path = "/data/ls/porla/data1G/data_client_output";
+    // this->client_output_path = "/data/ls/porla/data1G/data_client_output";
+    this->client_output_path = "/root/porla/porla/porla/Client";
     // NTL Init
     NTL::ZZ_p::init(PRIME_MODULUS);
     NTL::ZZ_p g = NTL::to_ZZ_p(GENERATOR);
@@ -1272,7 +1269,6 @@ void Client::my_initialize()
 
      // Allocate a buffer for audit operation
     audit_values = new int[(NUM_CHECK_AUDIT<<1)*height];
-    // data.close();
 }
 
 void Client::mix(MAC_Blocks A0, MAC_Blocks A1, MAC_Blocks A, int length)

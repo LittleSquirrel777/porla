@@ -16,7 +16,7 @@
 #define         ENABLE_LOG                   1
 const int       MAX_NUM_THREADS_SERVER      =  8;
 const int       MAX_NUM_THREADS_CLIENT      =  8;
-const int       SERVER_PORT                 =  8888;
+const int       SERVER_PORT                 =  7777;
 const int       ID_SIZE                     =  sizeof(int);       
 const int       BLOCK_SIZE                  =  (4092+ID_SIZE);                              
 const int       NUM_CHUNKS                  =  (BLOCK_SIZE>>5);   
