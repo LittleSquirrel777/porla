@@ -1,5 +1,5 @@
 CC=g++
-CFLAGS=-std=c++11 -O3 -pthread -march=native
+CFLAGS=-std=c++11 -O3 -pthread -march=native -g
 INCLUDE_PATH=-I. -I../ -I../Utils/secp256k1_lib -I/usr/local/include
 
 # Change the following paths of libraries if necessary

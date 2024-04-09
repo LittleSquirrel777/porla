@@ -1,4 +1,12 @@
 /*
+ * @Description: 
+ * @Version: 2.0
+ * @Autor: Yue
+ * @Date: 2024-03-28 20:20:09
+ * @LastEditors: Yue
+ * @LastEditTime: 2024-04-09 16:59:12
+ */
+/*
     @author:  Tung Le
     @email:   tungle@vt.edu
     @date:    June 15, 2022
@@ -13,7 +21,6 @@
 #define         TOP_CACHING_LEVEL           10
 
 // #define         ENABLE_KZG                  1
-#define         ENABLE_LOG                   1
 const int       MAX_NUM_THREADS_SERVER      =  8;
 const int       MAX_NUM_THREADS_CLIENT      =  8;
 const int       SERVER_PORT                 =  7777;
