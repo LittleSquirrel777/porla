@@ -110,6 +110,9 @@ public:
 
     // Functions for debugging
     void self_test();
+
+    //用于从处理过的数据中进行初始化
+    void Initialize_no_data();
 };
 
 Server::Server()
@@ -163,8 +166,8 @@ void Server::initialize()
 {
     // this->server_output_path = "/data/ls/porla/data1G/data_server_output";
     // this->file_prefix_path = "/data/ls/porla/data1G/";
-    this->server_output_path = "/root/porla/porla/porla/Server/data_server_output";
-    this->file_prefix_path = "/root/porla/porla/porla/Server/";
+    this->server_output_path = "/data/ls/data_config_file/data_server_output";
+    this->file_prefix_path = "/data/ls/data_config_file/";
     // Init NTL:ZZ_p
     NTL::ZZ_p::init(PRIME_MODULUS);
 #ifndef ENABLE_KZG
@@ -264,7 +267,6 @@ void Server::initialize()
         int k = 0;
         while((k < num_blocks_received))
         {
-            //存在问题 id由一个chunk32字节存储，可能大于一个int
             cout << "Block ID: " << *(int*)data_ptr << endl;
             string file_path = this->file_prefix_path + "U/" + to_string(i);
             write_data_block_to_file(file_path, data_ptr);
@@ -314,7 +316,12 @@ void Server::initialize()
 #endif
         data_ptr += COMMITMENT_MAC_SIZE;
     }
-    
+    //存储经过蝴蝶网络并处理完的MAC_commitments_H和MAC_alignments_H
+    string path1 = this->file_prefix_path + "MAC_COMMIT/" + to_string(height-1);
+    string path2 = this->file_prefix_path + "MAC_ALIGN/" + to_string(height-1);
+
+    write_MAC_to_file(path1, MAC_commitments_H, height - 1);
+    write_MAC_to_file(path2, MAC_alignments_H, height - 1);
     // Allocate a buffer for audit operation
     audit_values = new int[(NUM_CHECK_AUDIT<<1)*height];
 }
@@ -632,18 +639,19 @@ void Server::audit(uint8_t *audit_info)
                     if(index >= l) 
                     {
                         stored_coefs[n_points] = coeff;
+                        //初始构建时没有缓存，所以如果小于TOP_CACHING_LEVEL没有H_X和H_Y的数据来审计
                         //初始化构建C的时候是把数据全部读出来的，没有考虑最多只读TOP_CACHING_LEVEL层的数据，但是可以实现
-                        if(i > TOP_CACHING_LEVEL)
-                        {
+                        // if(i > TOP_CACHING_LEVEL)
+                        // {
                             stored_paths[count].path = this->file_prefix_path + "H_Y/" + to_string(i) + "_" + to_string(index-l);
                             stored_vects[n_points]   = new NTL::vec_ZZ;
                             stored_paths[count].data = stored_vects[n_points];
                             count++;
-                        }
-                        else 
-                        {
-                            stored_vects[n_points] = &database_H[i].Y[index-l];
-                        }
+                        // }
+                        // else 
+                        // {
+                            // stored_vects[n_points] = &database_H[i].Y[index-l];
+                        // }
 #ifndef ENABLE_KZG  
                         secp256k1_ge_set_gej(&ptc[n_points], &MAC_commitments_H[i].Y[index-l]);
                         secp256k1_ge_set_gej(&pta[n_points], &MAC_alignments_H[i].Y[index-l]);
@@ -655,17 +663,17 @@ void Server::audit(uint8_t *audit_info)
                     else
                     {
                         stored_coefs[n_points] = coeff;
-                        if(i > TOP_CACHING_LEVEL)
-                        {
+                        // if(i > TOP_CACHING_LEVEL)
+                        // {
                             stored_paths[count].path = this->file_prefix_path + "H_X/" + to_string(i) + "_" + to_string(index);
                             stored_vects[n_points]   = new NTL::vec_ZZ;
                             stored_paths[count].data = stored_vects[n_points];
                             count++;
-                        }
-                        else 
-                        {
-                            stored_vects[n_points] = &database_H[i].X[index];
-                        }
+                        // }
+                        // else 
+                        // {
+                        //     stored_vects[n_points] = &database_H[i].X[index];
+                        // }
 #ifndef ENABLE_KZG
                         secp256k1_ge_set_gej(&ptc[n_points], &MAC_commitments_H[i].X[index]);
                         secp256k1_ge_set_gej(&pta[n_points], &MAC_alignments_H[i].X[index]);
@@ -693,17 +701,17 @@ void Server::audit(uint8_t *audit_info)
                     if(j >= l)
                     {
                         stored_coefs[n_points] = coeff;
-                        if(i > TOP_CACHING_LEVEL)
-                        {
+                        // if(i > TOP_CACHING_LEVEL)
+                        // {
                             stored_paths[count].path = this->file_prefix_path + "H_Y/" + to_string(i) + "_" + to_string(j-l);
                             stored_vects[n_points]   = new NTL::vec_ZZ;
                             stored_paths[count].data = stored_vects[n_points];
                             count++;
-                        }
-                        else 
-                        {
-                            stored_vects[n_points] = &database_H[i].Y[j-l];
-                        }
+                        // }
+                        // else 
+                        // {
+                        //     stored_vects[n_points] = &database_H[i].Y[j-l];
+                        // }
 #ifndef ENABLE_KZG
                         secp256k1_ge_set_gej(&ptc[n_points], &MAC_commitments_H[i].Y[j-l]);
                         secp256k1_ge_set_gej(&pta[n_points], &MAC_alignments_H[i].Y[j-l]);
@@ -715,17 +723,17 @@ void Server::audit(uint8_t *audit_info)
                     else
                     {
                         stored_coefs[n_points] = coeff;
-                        if(i > TOP_CACHING_LEVEL)
-                        {
+                        // if(i > TOP_CACHING_LEVEL)
+                        // {
                             stored_paths[count].path = this->file_prefix_path + "H_X/" + to_string(i) + "_" + to_string(j);
                             stored_vects[n_points]   = new NTL::vec_ZZ;
                             stored_paths[count].data = stored_vects[n_points];
                             count++;
-                        }
-                        else 
-                        {
-                            stored_vects[n_points] = &database_H[i].X[j];
-                        }
+                        // }
+                        // else 
+                        // {
+                        //     stored_vects[n_points] = &database_H[i].X[j];
+                        // }
 #ifndef ENABLE_KZG
                         secp256k1_ge_set_gej(&ptc[n_points], &MAC_commitments_H[i].X[j]);    
                         secp256k1_ge_set_gej(&pta[n_points], &MAC_alignments_H[i].X[j]);  
@@ -1516,11 +1524,11 @@ int Server::HAdd(Data_Block &data, MAC_Block &MAC)
 
 void Server::CRebuild()
 {
-    if(height - 1 > TOP_CACHING_LEVEL)
+    // if(height - 1 > TOP_CACHING_LEVEL)
     //这里小于10等于10的数据没有存到database_H中只存在了H_X/index文件里，导致审计从内存里取的时候没有数据
         CRebuild_No_Cached();
-    else 
-        CRebuild_Cached();
+    // else 
+    //     CRebuild_Cached();
 }
 
 void Server::CRebuild_Cached()
@@ -1970,8 +1978,7 @@ void Server::CRebuild_No_Cached()
                         NTL::ZZ       u, t;
                         NTL::vec_ZZ   Xk, Xkm2;
                         MAC_Block     um, tm;
-                        string        prefix_path = this->file_prefix_path + "H_X/" + to_string(height-1) + "_";
-
+                        string        prefix_path = this->file_prefix_path + "H_X/" + to_string(height-1) + "_";                        
                         for(int k = start_pos; k < end_pos; k += m)
                         {
                             read_error_code_from_file_512b(prefix_path, Xk, k);
@@ -2016,6 +2023,18 @@ void Server::CRebuild_No_Cached()
                                 //这里对最高一层即C的数据进行取余写回，然后MAC_alignments_H=(data%PRIME_MODULUS-data)%GROUP_ORDER)*G
                                 align_MAC(Xk, MAC_alignments_H[height-1].X[k], thr);
                                 align_MAC(Xkm2, MAC_alignments_H[height-1].X[k+m2], thr);
+                                //这里在进行蝴蝶网络后对最高层即C的align进行保存
+                                // string path1 = this->file_prefix_path + "MAC_ALIGN_X/" + to_string(height-1) + "_";
+                                // write_mac_to_file(path1, MAC_alignments_H[height-1].X[k], k);
+                                // write_mac_to_file(path1, MAC_alignments_H[height-1].X[k+m2], k+m2);
+                                // read_MAC_from_file(path1, MAC_alignments_H[height-1].X[k], k);
+                                // read_MAC_from_file(path1, MAC_alignments_H[height-1].X[k+m2], k+m2);
+                                //保存蝴蝶网络结束后的签名
+                                // string path2 = this->file_prefix_path + "MAC_COMMIT_X/" + to_string(height-1) + "_";
+                                // write_mac_to_file(path2, MAC_commitments_H[height-1].X[k], k);
+                                // write_mac_to_file(path2, MAC_commitments_H[height-1].X[k+m2], k+m2);
+                                // read_MAC_from_file(path2, MAC_commitments_H[height-1].X[k], k);
+                                // read_MAC_from_file(path2, MAC_commitments_H[height-1].X[k+m2], k+m2);
                                 write_error_code_to_file_256b(prefix_path, Xk, k);
                                 write_error_code_to_file_256b(prefix_path, Xkm2, k + m2);
                             }
@@ -2100,6 +2119,12 @@ void Server::CRebuild_No_Cached()
                             {
                                 align_MAC(Xk, MAC_alignments_H[height-1].X[k], thr);
                                 align_MAC(Xkm2, MAC_alignments_H[height-1].X[k+m2], thr);
+                                // string path1 = this->file_prefix_path + "MAC_ALIGN_X/" + to_string(height-1) + "_";
+                                // read_mac_to_file(path1, MAC_alignments_H[height-1].X[k], k);
+                                // write_mac_to_file(path1, MAC_alignments_H[height-1].X[k+m2], k+m2);
+                                // string path2 = this->file_prefix_path + "MAC_COMMIT_X/" + to_string(height-1) + "_";
+                                // write_mac_to_file(path2, MAC_commitments_H[height-1].X[k], k);
+                                // write_mac_to_file(path2, MAC_commitments_H[height-1].X[k+m2], k+m2);
                                 write_error_code_to_file_256b(prefix_path, Xk, k);
                                 write_error_code_to_file_256b(prefix_path, Xkm2, k + m2);
                             }
@@ -2193,6 +2218,13 @@ void Server::CRebuild_No_Cached()
                             {
                                 align_MAC(Yk, MAC_alignments_H[height-1].Y[k], thr);
                                 align_MAC(Ykm2, MAC_alignments_H[height-1].Y[k+m2], thr);
+                                // string path1 = this->file_prefix_path + "MAC_ALIGN_Y/" + to_string(height-1) + "_";
+                                // write_mac_to_file(path1, MAC_alignments_H[height-1].Y[k], k);
+                                // write_mac_to_file(path1, MAC_alignments_H[height-1].Y[k+m2], k+m2);
+                                // //保存蝴蝶网络结束后的签名
+                                // string path2 = this->file_prefix_path + "MAC_COMMIT_Y/" + to_string(height-1) + "_";
+                                // write_mac_to_file(path2, MAC_commitments_H[height-1].Y[k], k);
+                                // write_mac_to_file(path2, MAC_commitments_H[height-1].Y[k+m2], k+m2);
                                 write_error_code_to_file_256b(prefix_path, Yk, k);
                                 write_error_code_to_file_256b(prefix_path, Ykm2, k + m2);
                             }
@@ -2277,6 +2309,12 @@ void Server::CRebuild_No_Cached()
                             {
                                 align_MAC(Yk, MAC_alignments_H[height-1].Y[k], thr);
                                 align_MAC(Ykm2, MAC_alignments_H[height-1].Y[k+m2], thr);
+                                // string path1 = this->file_prefix_path + "MAC_ALIGN_Y/" + to_string(height-1) + "_";
+                                // write_mac_to_file(path1, MAC_alignments_H[height-1].Y[k], k);
+                                // write_mac_to_file(path1, MAC_alignments_H[height-1].Y[k+m2], k+m2);
+                                // string path2 = this->file_prefix_path + "MAC_COMMIT_Y/" + to_string(height-1) + "_";
+                                // write_mac_to_file(path2, MAC_commitments_H[height-1].Y[k], k);
+                                // write_mac_to_file(path2, MAC_commitments_H[height-1].Y[k+m2], k+m2);
                                 write_error_code_to_file_256b(prefix_path, Yk, k);
                                 write_error_code_to_file_256b(prefix_path, Ykm2, k + m2);
                             }
@@ -2491,6 +2529,107 @@ void Server::inner_product_prove(NTL::vec_ZZ &a, NTL::vec_ZZ &b, uint8_t *proof)
     }
 } 
 #endif
+
+void Server::Initialize_no_data()
+{
+    this->server_output_path = "/root/porla/porla/porla/porla/Server/data_server_output";
+    this->file_prefix_path = "/root/porla/porla/porla/porla/Server/";
+    // Init NTL:ZZ_p
+    NTL::ZZ_p::init(PRIME_MODULUS);
+#ifndef ENABLE_KZG
+    // Generators g for computing commitments
+    init_generators();
+    zmq::message_t generators_request;
+    socket->recv(&generators_request);
+    zmq::message_t reply_generators((NUM_GENERATORS+1)*sizeof(secp256k1_ge));
+
+    uint8_t *data = (uint8_t*)reply_generators.data();
+    for(int i = 0; i < NUM_GENERATORS; ++i)
+    {
+        memcpy((void*)data, &generators[i], sizeof(secp256k1_ge));
+        data += sizeof(secp256k1_ge);
+    }
+    memcpy((void*)data, &u, sizeof(secp256k1_ge));
+    // Send generators to client
+    socket->send(reply_generators);
+#else 
+    zmq::message_t SRS_msg;
+    socket->recv(&SRS_msg);
+    cout << "SRS size: " << SRS_msg.size() << endl;
+
+    GoInt   SRS_size;
+    GoSlice SRS_data;
+    SRS_data.data = (void*)SRS_msg.data();
+    SRS_data.len = SRS_data.cap = NUM_CHUNKS*32+132;
+    
+    init_SRS_from_data(NUM_CHUNKS, &SRS_data);
+
+    string reply_srs_msg = "RECEIVED SRS FROM CLIENT.";
+    zmq::message_t reply_srs(reply_srs_msg.length());
+    memcpy((void*)reply_srs.data(), reply_srs_msg.c_str(), reply_srs_msg.length());
+    socket->send(reply_srs);
+#endif 
+
+    // Receive database from client
+    cout << "Waiting for receiving database from client..." << endl;
+    zmq::message_t database_request;
+    socket->recv(&database_request);
+
+    // Receive the number of data blocks
+    num_blocks = *(int*)database_request.data();
+
+    // Reply to server 
+    string reply_message = "RECEIVED " + to_string(database_request.size()) + " BYTES FROM CLIENT.";
+    zmq::message_t reply_msg(reply_message.length());
+    memcpy((void*)reply_msg.data(), reply_message.c_str(), reply_message.length());
+    socket->send(reply_msg);
+
+    // Store database to memory
+    MAC_commitments_U = new MAC_Block[num_blocks];
+
+    // Initialize modular arithmetic parameters and FFT
+    NTL::ZZ_p g = NTL::to_ZZ_p(GENERATOR);
+    NTL::ZZ a   = (PRIME_MODULUS-1)/(2 * num_blocks);
+    w           = NTL::power(g, a);
+
+    write_step  = 0;
+    height      = ceil(log2(num_blocks)) + 1;
+
+    database_H         = new Data_Layer[height];
+    MAC_alignments_H   = new MAC_Layer[height];
+    MAC_commitments_H  = new MAC_Layer[height];
+
+    int l = 2;
+    for (int i = 0; i < height; i++) 
+    {
+        database_H[i].X            = new Data_Block[l];
+        database_H[i].Y            = new Data_Block[l];
+        database_H[i].empty        = true;
+        
+        MAC_alignments_H[i].X      = new MAC_Block[l];
+        MAC_alignments_H[i].Y      = new MAC_Block[l];
+        MAC_alignments_H[i].empty  = true;
+
+        MAC_commitments_H[i].X     = new MAC_Block[l];
+        MAC_commitments_H[i].Y     = new MAC_Block[l];
+        MAC_commitments_H[i].empty = true;
+
+        l                        <<= 1;
+    }
+
+    int remaining = num_blocks;
+    int i = 0;
+    
+    string path1 = this->file_prefix_path + "MAC_COMMIT/" + to_string(height-1);
+    string path2 = this->file_prefix_path + "MAC_ALIGN/" + to_string(height-1);
+
+    read_MAC_from_file(path1, MAC_commitments_H, height - 1);
+    read_MAC_from_file(path2, MAC_alignments_H, height - 1);
+
+
+    // Allocate a buffer for audit operation
+    audit_values = new int[(NUM_CHECK_AUDIT<<1)*height];
+}
 
 #endif
 

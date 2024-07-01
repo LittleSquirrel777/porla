@@ -13,9 +13,8 @@ int main(int argc, char **argv)
     
     // client.self_test();
     client.my_initialize();
-
-    client.my_test();
-
+    // client.initialize_no_data();
+    // client.my_test();
     return 0;
 }
 

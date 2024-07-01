@@ -5,8 +5,8 @@ int main(int argc, char **argv)
     Server server;
     
     server.initialize();
-
-    server.self_test();
+    // server.Initialize_no_data();
+    // server.self_test();
 
     return 0;
 }

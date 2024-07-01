@@ -16,6 +16,12 @@
 #include "Utils/utils.h"
 #include "config.hpp"
 #include <chrono>
+#include <fstream>
+#include <vector>
+#include <string>
+#include <bitset>
+#include <algorithm>
+#include <dirent.h>
 using namespace     std;
 
 int*                audit_values;
@@ -77,12 +83,7 @@ class Client
         zmq::socket_t*   socket;
 
         //data path
-        string          datafile_path;
-        int             data_buffer_size;
         string          client_output_path;
-#ifdef ENABLE_LOG
-        xlsxiowriter handle;
-#endif
 
         Client();
         ~Client();
@@ -90,7 +91,6 @@ class Client
         void get_generators();
         void create_data_block(int block_id, Data_Block &data_block);
         void initialize(int num_blocks);
-        void my_initialize();
         void compute_commitment(Data_Block &data_block, MAC_Block &commitment);
         void compute_MAC_complement(int level, int index, MAC_Block &MAC_complement);
 #ifndef ENABLE_KZG
@@ -111,6 +111,14 @@ class Client
         void clear_H(int until_level);
         // CRebuild MAC
         void CRebuild();
+
+        //read data
+        void readFileNames(const std::string& fileName, std::vector<std::string>& files);
+        std::string byteArrayToHexString(const char* byteArray, size_t length);
+
+        //一个用于传输数据一个用于无数据下的初始化
+        void my_initialize();
+        void initialize_no_data();
 };
 
 Client::Client()
@@ -657,6 +665,7 @@ void Client::audit()
     //每次更新时,服务端H从下往上进行了蝴蝶网络，客户端也要进行状态的蝴蝶网络，在加上隐藏的mac，发送给服务端
     //这样就能保证H的每一层的hr就是普通的，没有经过蝴蝶网络的
     //审计时客户端对complements_h有数据的行进行重建，只要普通的st就行
+
     long saved_write_step = write_step;
     for(int i = 0; i < height; ++i)
     {
@@ -979,12 +988,9 @@ void Client::my_test()
         std::ofstream client_output(this->client_output_path, std::ios::app);
         client_output << "audit count:" << i + 1 << endl;
         client_output.close();
-        update(i + 1);
+        // update(i + 1);
         audit();
     }
-#ifdef ENABLE_LOG
-	xlsxiowrite_close(handle);
-#endif
     // cout << "audit time: " << total_time << endl;
 }
 
@@ -995,12 +1001,9 @@ void Client::my_initialize()
     //10 GB num_blocks 2621440  4194304
     //100 GB num_blocks 26214400    33554432
     //1 TB num_blocks 268435456
-    this->num_blocks = 2048;
-    this->datafile_path = "/data/ls/porla";
-    // read one block size
-    this->data_buffer_size = 32;
+    this->num_blocks = 16777216;
     // this->client_output_path = "/data/ls/porla/data1G/data_client_output";
-    this->client_output_path = "/root/porla/porla/porla/Client";
+    this->client_output_path = "/data/ls/data_config_file/Client";
     // NTL Init
     NTL::ZZ_p::init(PRIME_MODULUS);
     NTL::ZZ_p g = NTL::to_ZZ_p(GENERATOR);
@@ -1065,11 +1068,25 @@ void Client::my_initialize()
 
     MAC_Block commitment;
 
-    // read data
-    // std::ifstream data(this->datafile_path, std::ios::binary);
-    // if (!data.is_open()) {
-    //     std::cerr << "Failed to open file: " << this->datafile_path << std::endl;
-    // }
+
+    //把所有文件名读取到allFiles
+    std::vector<std::string> txtFiles = {"/root/porla/porla/porla/dataName/email_txt_filename.txt", 
+    "/root/porla/porla/porla/dataName/img_txt-img_million_filename.txt",
+    "/root/porla/porla/porla/dataName/img_txt-text_filename.txt",
+    "/root/porla/porla/porla/dataName/img_m_filename.txt"};
+    std::vector<std::string> allFiles;
+    
+    for (const auto& txtFile : txtFiles) {
+        readFileNames(txtFile, allFiles);
+    }
+    const size_t chunkSize = 32; // 每次读取32字节
+    size_t file_index = 0;
+    auto& filePath = allFiles[file_index];
+    std::ifstream inputFile(filePath, std::ios::binary);
+    if (!inputFile.is_open()) {
+        std::cerr << "Failed to open file: " << filePath << std::endl;
+    }
+    
     int i = 0;
     int remaining = num_blocks;
     while(remaining > 0)
@@ -1078,31 +1095,38 @@ void Client::my_initialize()
         zmq::message_t request(num_blocks_sent*(BLOCK_SIZE+COMMITMENT_MAC_SIZE));
         uint8_t *data_ptr = (uint8_t*)request.data();
 
+        // if (i == 2170) {
+        //     cout << "error1" << endl;
+        // }
         for(int k = 0; k < num_blocks_sent; ++k)
         {
             // Process data parts
             data_block[0] = i + 1;
             for(int j = 1; j < NUM_CHUNKS; ++j)
             {
-                // char buffer[this->data_buffer_size];
-                // data.read(buffer, this->data_buffer_size);
-                // std::streamsize bytesRead = data.gcount();
-                // NTL::ZZ result(0);
-                // // cout << "error1" << endl;
-                // for (int cnt = 0; cnt < bytesRead; ++cnt) {
-                //     unsigned int byteValue = static_cast<unsigned int>(buffer[cnt]);
-                //     result *= 256;
-                //     result += byteValue;
-                // }
-                // // cout << result << endl;
-                // // cout << "error2" << endl;
-                // if (bytesRead > 0) {
-                //     data_block[j] = result;
-                // } else {
-                //     data_block[j] = NTL::to_ZZ(NTL::RandomBits_ZZ(256));
-                // }
-                data_block[j] = NTL::to_ZZ(NTL::RandomBits_ZZ(256));
-                // cout << "error3" << endl;
+                if (inputFile.eof()) {
+                    if (file_index + 1 < allFiles.size()) {
+                        file_index++;
+                        filePath = allFiles[file_index];
+                        inputFile = std::ifstream(filePath, std::ios::binary);
+                        if (!inputFile.is_open()) {
+                            std::cerr << "Failed to open file: " << filePath << std::endl;
+                        }
+                    } else {
+                        data_block[j] = NTL::to_ZZ(NTL::RandomBits_ZZ(256));
+                        continue;
+                    }
+                }
+                char buffer[chunkSize] = {0}; // 32字节即256位
+                inputFile.read(buffer, chunkSize);
+                std::streamsize bytesRead = inputFile.gcount();
+
+                if (bytesRead < chunkSize) {
+                    std::fill(buffer + bytesRead, buffer + chunkSize, 0);
+                }
+                NTL::ZZ zzValue;
+                NTL::ZZFromBytes(zzValue, reinterpret_cast<const unsigned char*>(buffer), chunkSize);
+                data_block[j] = zzValue;
             }
             for(int j = 0; j < NUM_CHUNKS; ++j)
             {
@@ -1193,6 +1217,80 @@ void Client::my_initialize()
     // Receive response from server
     socket->recv(&reply);
     cout << "[SERVER RESPONSE]: " << reply.to_string() << endl;
+    
+    // Deallocate initial information
+    delete [] complements_U;
+    delete [] complements_H[height-1].X;
+    delete [] complements_H[height-1].Y;
+    delete [] complements_H;
+
+     // Allocate a buffer for audit operation
+    audit_values = new int[(NUM_CHECK_AUDIT<<1)*height];
+}
+void Client::initialize_no_data()
+{
+    this->write_step = 0;
+    //1 GB num_blocks 262144
+    //10 GB num_blocks 2621440  4194304
+    //100 GB num_blocks 26214400    33554432
+    //1 TB num_blocks 268435456
+    this->num_blocks = 16777216;
+    // this->client_output_path = "/data/ls/porla/data1G/data_client_output";
+    this->client_output_path = "/data/ls/data_config_file/data_client_output";
+    // NTL Init
+    NTL::ZZ_p::init(PRIME_MODULUS);
+    NTL::ZZ_p g = NTL::to_ZZ_p(GENERATOR);
+    NTL::ZZ a   = (PRIME_MODULUS-1)/(2 * num_blocks);
+    w           = NTL::power(g, a);
+
+    // Public value h for computing MACs of commitments
+#ifndef ENABLE_KZG
+    // Generate a secket key
+    secp256k1_scalar_set_int(&alpha, 0);
+    memcpy(alpha.d, SECRET_KEY, 16);
+
+    random_group_element_test(&h_mac);
+
+    // Get generators gi from server
+    generators       = new secp256k1_ge[NUM_GENERATORS];
+    alpha_generators = new secp256k1_ge[NUM_CHUNKS];
+#else 
+    GoSlice gs_tau_key;
+    gs_tau_key.data   = (void*)TAU_KEY;
+    gs_tau_key.len    = gs_tau_key.cap   = 16;
+
+    GoSlice gs_alpha_key;
+    gs_alpha_key.data = (void*)SECRET_KEY;
+    gs_alpha_key.len  = gs_alpha_key.cap = 16;
+
+    init_key(&gs_tau_key, &gs_alpha_key);
+#endif
+    get_generators();
+    
+    // PRF to generate one-time keys
+    encryption_level = (int*)&PRF_value[0];
+    encryption_index = (int*)&PRF_value[4];
+    encryption_time  = (long*)&PRF_value[8];
+
+    // Init AES to use as a PRF function
+    AES_set_encrypt_key(SECRET_KEY, AES_KEY_SIZE<<3, &MAC_PRF_key);
+
+    // Other data structures for audit 
+    write_step    = 0;
+    height        = ceil(log2(num_blocks)) + 1;
+    complements_U = new MAC_Block[num_blocks];
+    complements_H = new MAC_Layer[height];
+    complements_H[height-1].X = new MAC_Block[2<<(height-1)];
+    complements_H[height-1].Y = new MAC_Block[2<<(height-1)];
+    
+    zmq::message_t request_msg(sizeof(num_blocks));
+    memcpy((void*)request_msg.data(), &num_blocks, sizeof(num_blocks));
+    socket->send(request_msg);
+
+    zmq::message_t reply;
+    socket->recv(&reply);
+    cout << "[SERVER RESPONSE]: " << reply.to_string() << endl;
+
     
     // Deallocate initial information
     delete [] complements_U;
@@ -1948,6 +2046,29 @@ bool Client::verify_kzg_proof(uint8_t *kzg_proof)
     return static_cast<bool>(verify_proof(&gs_commitment, &gs_proof_H, &gs_proof_point, &gs_proof_claim));
 }
 #endif 
+
+void Client::readFileNames(const std::string& fileName, std::vector<std::string>& files) {
+    std::ifstream file(fileName);
+    if (!file.is_open()) {
+        std::cerr << "Failed to open file: " << fileName << std::endl;
+        return;
+    }
+
+    std::string line;
+    while (std::getline(file, line)) {
+        files.push_back(line);
+    }
+
+    file.close();
+}
+
+std::string Client::byteArrayToHexString(const char* byteArray, size_t length) {
+    std::stringstream hexStream;
+    for (size_t i = 0; i < length; ++i) {
+        hexStream << std::hex << std::setw(2) << std::setfill('0') << (static_cast<unsigned int>(byteArray[i]) & 0xFF);
+    }
+    return hexStream.str();
+}
 
 #endif
 

@@ -607,6 +607,27 @@ inline void read_data_block_from_file(string &file_path, Data_Block &data_block)
     in_file.close();
 }
 
+// //客户端发来的证明，经过蝴蝶网络后保存起来
+// //问题：如何存储secp256k1_gej数据到文件中
+// inline void write_mac_to_file(string &prefix_path, MAC_Block &mac_block, int index)
+// {
+
+//     string full_path = prefix_path + to_string(index);
+//     ofstream out_file(full_path, ios::binary);
+
+//     out_file.write(reinterpret_cast<const char*>(&mac_block), COMMITMENT_MAC_SIZE);
+//     out_file.close();
+// }
+
+// inline void read_mac_to_file(string &prefix_path, MAC_Block &mac_block, int index)
+// {
+//     string full_path = prefix_path + to_string(index);
+//     ifstream in_file(full_path, ios::binary);
+
+//     in_file.read(reinterpret_cast<char*>(&mac_block), COMMITMENT_MAC_SIZE);
+//     in_file.close();
+// }
+
 inline void read_error_code_from_file_256b(string &file_path, Data_Block &data_block)
 {
     uint32_t value[8];
