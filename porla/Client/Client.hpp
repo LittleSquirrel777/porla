@@ -889,10 +889,10 @@ void Client::audit()
     }));
     for(auto &v: res) v.get();
 	res.clear();
+    std::ofstream client_output(this->client_output_path, std::ios::out);
     double verify_time = time_from(start_verify);
     cout << "Verification time: " << verify_time << endl;
-    std::ofstream client_output(this->client_output_path, std::ios::app);
-    client_output << "Verification time: " << verify_time << endl;
+    // client_output << "Verification time:" << verify_time << endl;
 #else 
     // Compute MAC based on commitment received from server
     MAC_Block commitment;
@@ -927,8 +927,7 @@ void Client::audit()
 #endif    
     double audit_time = time_from(start);
     cout << "Audit time: " << audit_time << endl;
-    client_output << "Audit time: " << audit_time << endl;
-    
+    client_output << "auditTime:" << audit_time << endl;
     // Deallocate memory used for computing MAC complements
     for(int i = 0; i < height; ++i)
     {
@@ -985,9 +984,9 @@ void Client::my_test()
     for (int i = 0; i < num_blocks; i++) {
         //1GB为8191， 10GB为32767   65535   262143
         // if (i == 8191 || i == 8192) {
-        std::ofstream client_output(this->client_output_path, std::ios::app);
-        client_output << "audit count:" << i + 1 << endl;
-        client_output.close();
+        // std::ofstream client_output(this->client_output_path, std::ios::app);
+        // client_output << "audit count:" << i + 1 << endl;
+        // client_output.close();
         // update(i + 1);
         audit();
     }
@@ -1001,9 +1000,12 @@ void Client::my_initialize()
     //10 GB num_blocks 2621440  4194304
     //100 GB num_blocks 26214400    33554432
     //1 TB num_blocks 268435456
-    this->num_blocks = 16777216;
+    // this->num_blocks = 2097152;
     // this->client_output_path = "/data/ls/porla/data1G/data_client_output";
-    this->client_output_path = "/data/ls/data_config_file/Client";
+    // this->client_output_path = "/data/ls/data_config_file/data_client_output";
+    std::ofstream client_output(this->client_output_path, std::ios::out);
+    client_output << "blockCount" << this->num_blocks << endl;
+    client_output.close();
     // NTL Init
     NTL::ZZ_p::init(PRIME_MODULUS);
     NTL::ZZ_p g = NTL::to_ZZ_p(GENERATOR);
@@ -1069,11 +1071,12 @@ void Client::my_initialize()
     MAC_Block commitment;
 
 
-    //把所有文件名读取到allFiles
     std::vector<std::string> txtFiles = {"/root/porla/porla/porla/dataName/email_txt_filename.txt", 
     "/root/porla/porla/porla/dataName/img_txt-img_million_filename.txt",
     "/root/porla/porla/porla/dataName/img_txt-text_filename.txt",
     "/root/porla/porla/porla/dataName/img_m_filename.txt"};
+    //把所有文件名读取到allFiles
+    // std::vector<std::string> txtFiles = {"/root/porla/porla/porla/dataName/img_m_filename.txt"};
     std::vector<std::string> allFiles;
     
     for (const auto& txtFile : txtFiles) {
@@ -1170,12 +1173,14 @@ void Client::my_initialize()
     MAC_Block updated_MAC_complement;
     MAC_Block temp_gej;
     int l = 1<<(height-1);
-    zmq::message_t request((1<<height) * COMMITMENT_MAC_SIZE);
-    uint8_t *data_ptr = (uint8_t*)request.data();
+    // zmq::message_t request((1<<height) * COMMITMENT_MAC_SIZE);
+    // uint8_t *data_ptr = (uint8_t*)request.data();
 
 #ifndef ENABLE_KZG
     for(int i = 0; i < (l<<1); ++i)
     {
+        zmq::message_t request(COMMITMENT_MAC_SIZE);
+        uint8_t *data_ptr = (uint8_t*)request.data();
         compute_MAC_complement(height-1, i, updated_MAC_complement);
         if(i >= l)
         {
@@ -1189,7 +1194,13 @@ void Client::my_initialize()
             secp256k1_gej_add_var(&temp_gej, &temp_gej, &updated_MAC_complement, NULL);
             memcpy((void*)data_ptr, &temp_gej, COMMITMENT_MAC_SIZE);
         }
-        data_ptr += COMMITMENT_MAC_SIZE;
+        // data_ptr += COMMITMENT_MAC_SIZE;
+        // Send data blocks to server
+        socket->send(request);
+
+        // Receive response from server
+        socket->recv(&reply);
+        cout << "[SERVER RESPONSE]: " << reply.to_string() << endl;
     }
 #else 
     for(int i = 0; i < (l<<1); ++i)
@@ -1212,11 +1223,11 @@ void Client::my_initialize()
 #endif 
 
     // Send database to server
-    socket->send(request);
+    // socket->send(request);
 
     // Receive response from server
-    socket->recv(&reply);
-    cout << "[SERVER RESPONSE]: " << reply.to_string() << endl;
+    // socket->recv(&reply);
+    // cout << "[SERVER RESPONSE]: " << reply.to_string() << endl;
     
     // Deallocate initial information
     delete [] complements_U;
@@ -1234,9 +1245,12 @@ void Client::initialize_no_data()
     //10 GB num_blocks 2621440  4194304
     //100 GB num_blocks 26214400    33554432
     //1 TB num_blocks 268435456
-    this->num_blocks = 16777216;
+    // this->num_blocks = 1024;
     // this->client_output_path = "/data/ls/porla/data1G/data_client_output";
-    this->client_output_path = "/data/ls/data_config_file/data_client_output";
+    // this->client_output_path = "/data/ls/data_config_file/data_client_output";
+    // std::ofstream client_output(this->client_output_path, std::ios::out);
+    // client_output << "blockCount:" << this->num_blocks << endl;
+    // client_output.close();
     // NTL Init
     NTL::ZZ_p::init(PRIME_MODULUS);
     NTL::ZZ_p g = NTL::to_ZZ_p(GENERATOR);

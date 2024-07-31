@@ -1,2 +1,8 @@
 .DS_Store
 **/.DS_Store
+*.txt
+/porla/Server/destroy_block
+/porla/Server/*.sh
+*output
+/porla/Server/Server
+/porla/Client/Client

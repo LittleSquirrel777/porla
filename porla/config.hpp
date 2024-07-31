@@ -36,7 +36,7 @@ const int       NUM_GENERATORS              =  NUM_CHUNKS;
 const int       MAX_BLOCKS_SENT             =  1024;
 
 // The number of blocks in each level of H and C to perform audit
-const int       NUM_CHECK_AUDIT             =  128;
+const int       NUM_CHECK_AUDIT             =  2048;
 
 // Secret key for PRF
 const int       AES_DATA_SIZE               =  16;

@@ -15,6 +15,8 @@
 #include "Utils/utils.h"
 #include "config.hpp"
 #include <chrono>
+#include <unistd.h>
+
 using namespace      std;
 
 int                  *audit_values;
@@ -111,8 +113,10 @@ public:
     // Functions for debugging
     void self_test();
 
-    //用于从处理过的数据中进行初始化
+    //用于向客户端发送一些参数
     void Initialize_no_data();
+    //用于加载配置文件 mac和aligin
+    void loadConfig();
 };
 
 Server::Server()
@@ -166,8 +170,8 @@ void Server::initialize()
 {
     // this->server_output_path = "/data/ls/porla/data1G/data_server_output";
     // this->file_prefix_path = "/data/ls/porla/data1G/";
-    this->server_output_path = "/data/ls/data_config_file/data_server_output";
-    this->file_prefix_path = "/data/ls/data_config_file/";
+    // this->server_output_path = "/data/ls/data_config_file/data_server_output";
+    // this->file_prefix_path = "/data/ls/data_config_file/email_txt/";
     // Init NTL:ZZ_p
     NTL::ZZ_p::init(PRIME_MODULUS);
 #ifndef ENABLE_KZG
@@ -286,12 +290,12 @@ void Server::initialize()
     }
     
     // Wait for receiving updated MAC hiding parts
-    socket->recv(&database_request);
-    uint8_t *data_ptr = (uint8_t*)database_request.data();
-    reply_message = "RECEIVED " + to_string(database_request.size()) + " BYTES FROM CLIENT.";
-    zmq::message_t reply_msg_complements(reply_message.length());
-    memcpy((void*)reply_msg_complements.data(), reply_message.c_str(), reply_message.length());
-    socket->send(reply_msg_complements);
+    // socket->recv(&database_request);
+    // uint8_t *data_ptr = (uint8_t*)database_request.data();
+    // reply_message = "RECEIVED " + to_string(database_request.size()) + " BYTES FROM CLIENT.";
+    // zmq::message_t reply_msg_complements(reply_message.length());
+    // memcpy((void*)reply_msg_complements.data(), reply_message.c_str(), reply_message.length());
+    // socket->send(reply_msg_complements);
 
     // Build C 
 
@@ -302,6 +306,13 @@ void Server::initialize()
     for(int i = 0; i < (l<<1); ++i)
     {
 #ifndef ENABLE_KZG
+        socket->recv(&database_request);
+        uint8_t *data_ptr = (uint8_t*)database_request.data();
+        reply_message = "RECEIVED " + to_string(database_request.size()) + " BYTES FROM CLIENT.";
+        zmq::message_t reply_msg_complements(reply_message.length());
+        memcpy((void*)reply_msg_complements.data(), reply_message.c_str(), reply_message.length());
+        socket->send(reply_msg_complements);
+
         memcpy(&MAC_complement, data_ptr, COMMITMENT_MAC_SIZE);
         if(i >= l)
             secp256k1_gej_add_var(&MAC_commitments_H[height-1].Y[i-l], &MAC_commitments_H[height-1].Y[i-l], &MAC_complement, NULL);
@@ -314,7 +325,7 @@ void Server::initialize()
         else
             bn254_add(MAC_commitments_H[height-1].X[i], MAC_complement);
 #endif
-        data_ptr += COMMITMENT_MAC_SIZE;
+        // data_ptr += COMMITMENT_MAC_SIZE;
     }
     //存储经过蝴蝶网络并处理完的MAC_commitments_H和MAC_alignments_H
     string path1 = this->file_prefix_path + "MAC_COMMIT/" + to_string(height-1);
@@ -790,10 +801,10 @@ void Server::audit(uint8_t *audit_info)
     
     for(auto &v: res) v.get();
 	res.clear();
-    std::ofstream server_output(this->server_output_path, std::ios::app);
+    std::ofstream server_output(this->server_output_path, std::ios::out);
     double reading_time = time_from(start_reading);
     cout << "Reading time: " << reading_time << endl;
-    server_output << "Reading time: " << reading_time << endl;
+    server_output << "Reading time:" << reading_time << endl;
     vector<int> ivec(n_points);
     iota(ivec.begin(), ivec.end(), 0);
     random_shuffle(ivec.begin(), ivec.end(), random_func);
@@ -844,12 +855,12 @@ void Server::audit(uint8_t *audit_info)
 	res.clear();
     double computing_time = time_from(start_computing);
     cout << "Computing time: " << computing_time << endl;
-    server_output << "Computing time: " << computing_time << endl;
+    server_output << "Computing time:" << computing_time << endl;
     for(int i = 0; i < MAX_NUM_THREADS_SERVER; ++i)
         B += B_parts[i];
     double preparation_time = time_from(start);
     cout << "Preparation time: " << preparation_time << endl;
-    server_output << "Preparation time: " << preparation_time << endl;
+    server_output << "Preparation time:" << preparation_time << endl;
 #ifndef ENABLE_KZG
     auto start_prove = clock_start();
     
@@ -904,7 +915,7 @@ void Server::audit(uint8_t *audit_info)
 	res.clear();
     double prove_time = time_from(start_prove);
     cout << "Proving time: " << prove_time << endl;
-    server_output << "Proving time: " << prove_time << endl;
+    server_output << "Proving time:" << prove_time << endl;
 
     // Send all information to client
     cout << "server starts to send data..." << endl;
@@ -978,9 +989,9 @@ void Server::self_test()
         switch(op)
         {
             case 'A': {
-                std::ofstream server_output(this->server_output_path, std::ios::app);
-                server_output << "audit count:" << i + 1 << endl;
-                server_output.close();
+                // std::ofstream server_output(this->server_output_path, std::ios::app);
+                // server_output << "audit count:" << i + 1 << endl;
+                // server_output.close();
                 audit((uint8_t*)request.data() + 1);
                 i++;
                 break;
@@ -990,6 +1001,8 @@ void Server::self_test()
                 update((uint8_t*)request.data() + 1);
                 break;
         }
+        // sleep(5);
+        // Initialize_no_data();
     }
 }
 
@@ -2532,8 +2545,8 @@ void Server::inner_product_prove(NTL::vec_ZZ &a, NTL::vec_ZZ &b, uint8_t *proof)
 
 void Server::Initialize_no_data()
 {
-    this->server_output_path = "/root/porla/porla/porla/porla/Server/data_server_output";
-    this->file_prefix_path = "/root/porla/porla/porla/porla/Server/";
+    // this->server_output_path = "/data/ls/data_config_file/data_server_output";
+    // this->file_prefix_path = "/data/ls/data_config_file/";
     // Init NTL:ZZ_p
     NTL::ZZ_p::init(PRIME_MODULUS);
 #ifndef ENABLE_KZG
@@ -2584,7 +2597,55 @@ void Server::Initialize_no_data()
     memcpy((void*)reply_msg.data(), reply_message.c_str(), reply_message.length());
     socket->send(reply_msg);
 
-    // Store database to memory
+    // // Store database to memory
+    // MAC_commitments_U = new MAC_Block[num_blocks];
+
+    // // Initialize modular arithmetic parameters and FFT
+    // NTL::ZZ_p g = NTL::to_ZZ_p(GENERATOR);
+    // NTL::ZZ a   = (PRIME_MODULUS-1)/(2 * num_blocks);
+    // w           = NTL::power(g, a);
+
+    // write_step  = 0;
+    // height      = ceil(log2(num_blocks)) + 1;
+
+    // database_H         = new Data_Layer[height];
+    // MAC_alignments_H   = new MAC_Layer[height];
+    // MAC_commitments_H  = new MAC_Layer[height];
+
+    // int l = 2;
+    // for (int i = 0; i < height; i++) 
+    // {
+    //     database_H[i].X            = new Data_Block[l];
+    //     database_H[i].Y            = new Data_Block[l];
+    //     database_H[i].empty        = true;
+        
+    //     MAC_alignments_H[i].X      = new MAC_Block[l];
+    //     MAC_alignments_H[i].Y      = new MAC_Block[l];
+    //     MAC_alignments_H[i].empty  = true;
+
+    //     MAC_commitments_H[i].X     = new MAC_Block[l];
+    //     MAC_commitments_H[i].Y     = new MAC_Block[l];
+    //     MAC_commitments_H[i].empty = true;
+
+    //     l                        <<= 1;
+    // }
+
+    // int remaining = num_blocks;
+    // int i = 0;
+    
+    // string path1 = this->file_prefix_path + "MAC_COMMIT/" + to_string(height-1);
+    // string path2 = this->file_prefix_path + "MAC_ALIGN/" + to_string(height-1);
+
+    // read_MAC_from_file(path1, MAC_commitments_H, height - 1);
+    // read_MAC_from_file(path2, MAC_alignments_H, height - 1);
+
+
+    // // Allocate a buffer for audit operation
+    // audit_values = new int[(NUM_CHECK_AUDIT<<1)*height];
+}
+
+void Server::loadConfig() {
+        // Store database to memory
     MAC_commitments_U = new MAC_Block[num_blocks];
 
     // Initialize modular arithmetic parameters and FFT
