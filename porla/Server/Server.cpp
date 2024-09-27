@@ -1,17 +1,18 @@
 #include "Server.hpp"
+#include <cstring>
 
 int main(int argc, char **argv)
 {
     Server server;
     if (argc > 1) {
         char* databaseName = argv[1];
-        if (databaseName == "email_txt")
+        if (strcmp(databaseName, "email_txt") == 0)
             server.file_prefix_path = "/data/ls/data_config_file/email_txt/";
-        else if (databaseName == "img_m")
+        else if (strcmp(databaseName, "img_m") == 0)
             server.file_prefix_path = "/data/ls/data_config_file/img_m/";
-        else if (databaseName == "img_million")
+        else if (strcmp(databaseName, "img_million") == 0)
             server.file_prefix_path = "/data/ls/data_config_file/img_txt/img_million/";
-        else if (databaseName == "text")
+        else if (strcmp(databaseName, "text") == 0)
             server.file_prefix_path = "/data/ls/data_config_file/img_txt/text/";
         // else if (databaseName == "search_result") {
         //     server.file_prefix_path = "/data/ls/data_config_file/search/";

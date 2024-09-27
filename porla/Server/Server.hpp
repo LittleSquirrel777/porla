@@ -625,7 +625,13 @@ void Server::audit(uint8_t *audit_info)
     prg.random_data((void*)audit_values, sizeof(int)*(NUM_CHECK_AUDIT<<1)*height);
 
     int *audit_values_ptr = audit_values;
-    
+    // 查看生成的随机数是不是每次都相等——结果不相等
+    // std::ofstream outfile("/root/porla/porla/porla/porla/rand_num.txt");
+    // for (int i = 0; i < (NUM_CHECK_AUDIT<<1); i++) {
+    //     outfile << i << ":" << audit_values_ptr[i] << endl;
+    //     // audit_values_ptr++;
+    // }
+    // audit_values_ptr = audit_values;
     int count = 0;
 
     for(int i = 0; i < height; ++i)
