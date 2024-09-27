@@ -30,16 +30,17 @@ make -j8
 
 1. 启动 server:
 ```
-$ cd Server
+$ cd porla/Server
 $ ./Server
 ```
 2. 启动 client:
 ```
-$ cd Client
+$ cd porla/Client
 $ ./Client
 ```
 
 使用上面方式生成配置文件后在porla_app/app.py中修改文件路径
+
 3. 启动后端
 ```
 $ cd porla_app
