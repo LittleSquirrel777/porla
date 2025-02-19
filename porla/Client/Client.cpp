@@ -40,7 +40,7 @@ int main(int argc, char **argv)
         client.num_blocks = 8192;
     }
     // client.num_blocks = 262144;
-    client.client_output_path = "/root/porla/porla/porla/porla/Client/data_client_output";
+    client.client_output_path = "/data/ls/data_config_file/log/data_client_output";
     // client.my_initialize();
     client.initialize_no_data();
     // client.my_test();

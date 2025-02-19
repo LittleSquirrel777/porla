@@ -77,6 +77,7 @@ public:
     //file_prefix
     string file_prefix_path;
     string server_output_path;
+    string audit_block_index_path;
     
     Server();
     ~Server();
@@ -633,6 +634,7 @@ void Server::audit(uint8_t *audit_info)
     // }
     // audit_values_ptr = audit_values;
     int count = 0;
+    std::ofstream audit_block_index(this->audit_block_index_path, std::ios::out);
 
     for(int i = 0; i < height; ++i)
     {
@@ -648,6 +650,7 @@ void Server::audit(uint8_t *audit_info)
                 {
                     int index = abs(indices[j]) % (l<<1);
                     int coeff = abs(coeffs[j]);
+                    audit_block_index << index << endl;
 #ifndef ENABLE_KZG
                     secp256k1_scalar_set_int(&sc[n_points], coeff);
 #else 
@@ -981,6 +984,7 @@ void Server::audit(uint8_t *audit_info)
     delete [] B_parts;
 
     server_output.close();
+    audit_block_index.close();
 }
 
 void Server::self_test()
